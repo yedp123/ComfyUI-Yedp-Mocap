@@ -9,10 +9,28 @@ import math
 # Define the directory to save captured videos
 OUTPUT_DIR = folder_paths.get_input_directory()
 
-# --- CONNECTIONS & INDICES ---
+# --- OPENPOSE STANDARDS (BGR COLORS) ---
+# Body Limb Colors (18 standard OpenPose limbs)
+POSE_COLORS = [
+    (0, 0, 255), (0, 85, 255), (0, 170, 255), (0, 255, 255), (0, 255, 170), (0, 255, 85),
+    (0, 255, 0), (85, 255, 0), (170, 255, 0), (255, 255, 0), (255, 170, 0), (255, 85, 0),
+    (255, 0, 0), (255, 0, 85), (255, 0, 170), (255, 0, 255), (255, 85, 255), (255, 170, 255)
+]
+
+# Hand Joint Colors (21 specific colors for each joint)
+# This "Rainbow" map is what allows the AI to distinguish the Pinky from the Thumb.
+HAND_COLORS = [
+    (100, 100, 100), (0, 0, 100), (0, 0, 150), (0, 0, 200), (0, 0, 255), # Wrist + Thumb (Red)
+    (0, 100, 100), (0, 150, 150), (0, 200, 200), (0, 255, 255),          # Index (Yellow/Green)
+    (50, 100, 0), (75, 150, 0), (100, 200, 0), (125, 255, 0),            # Middle (Green)
+    (100, 50, 0), (150, 75, 0), (200, 100, 0), (255, 125, 0),            # Ring (Blueish)
+    (100, 0, 100), (150, 0, 150), (200, 0, 200), (255, 0, 255)           # Pinky (Purple)
+]
+
+# Connections
 POSE_CONNECTIONS = [(11, 12), (11, 13), (13, 15), (12, 14), (14, 16), (11, 23), (12, 24), (23, 24), (23, 25), (24, 26), (25, 27), (26, 28), (27, 29), (28, 30), (29, 31), (30, 32)]
-POSE_COLORS = [(255, 0, 85), (255, 255, 0), (255, 170, 0), (0, 255, 0), (0, 170, 255), (255, 0, 0), (255, 0, 170), (255, 0, 255), (0, 85, 255), (0, 0, 255), (85, 0, 255), (170, 0, 255), (255, 0, 255), (255, 0, 170), (255, 0, 85), (255, 0, 0)]
 HAND_CONNECTIONS = [(0, 1), (1, 2), (2, 3), (3, 4), (0, 5), (5, 6), (6, 7), (7, 8), (0, 9), (9, 10), (10, 11), (11, 12), (0, 13), (13, 14), (14, 15), (15, 16), (0, 17), (17, 18), (18, 19), (19, 20)]
+
 FACE_INDICES = {
     "oval": [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109],
     "lips": [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95, 185, 40, 39, 37, 0, 267, 269, 270, 409, 415, 310, 311, 312, 13, 82, 81, 42, 183, 78],
@@ -105,11 +123,32 @@ class YedpMocapBase:
 
     def draw_points(self, img, landmarks, color=(0, 255, 255), radius=3, skip_indices=None):
         h, w = img.shape[:2]
-        for i, p in enumerate(landmarks):
+        
+        # If we are passed a list of indices to use, we iterate only those.
+        # Otherwise we iterate all landmarks.
+        indices_to_draw = range(len(landmarks))
+        
+        for i in indices_to_draw:
             if skip_indices and i in skip_indices: continue
+            
+            p = landmarks[i]
             cx, cy = int(p['x'] * w), int(p['y'] * h)
-            pt_color = color if len(img.shape) == 3 else 255
+            
+            # Color logic: Support single color OR list of colors (one per point)
+            pt_color = color
+            if isinstance(color, list) and len(color) > i:
+                 pt_color = color[i]
+            
             cv2.circle(img, (cx, cy), radius, pt_color, -1)
+
+    # Helper to draw specific subsets of points (used for face)
+    def draw_subset_points(self, img, landmarks, indices, color=(255, 255, 255), radius=2):
+        h, w = img.shape[:2]
+        for idx in indices:
+            if idx < len(landmarks):
+                p = landmarks[idx]
+                cx, cy = int(p['x'] * w), int(p['y'] * h)
+                cv2.circle(img, (cx, cy), radius, color, -1)
 
     def draw_contour(self, img, landmarks, indices, color=(255, 255, 255), thickness=1, fill=False):
         h, w = img.shape[:2]
@@ -122,19 +161,16 @@ class YedpMocapBase:
             else: cv2.polylines(img, pts, True, color, thickness)
 
     def fill_convex_hull(self, img, landmarks, color=255):
-        # IMPROVED MASK: Replaces 'mitten' convex hull with thick lines for fingers
         h, w = img.shape[:2]
-        # Draw thick lines for finger segments
+        # Thick lines for finger segments (Mask volume)
         for i, j in HAND_CONNECTIONS:
             if i < len(landmarks) and j < len(landmarks):
                 p1 = landmarks[i]
                 p2 = landmarks[j]
                 x1, y1 = int(p1['x'] * w), int(p1['y'] * h)
                 x2, y2 = int(p2['x'] * w), int(p2['y'] * h)
-                # Thickness ~15-20px fills out the finger volume nicely
                 cv2.line(img, (x1, y1), (x2, y2), color, 15)
-        
-        # Draw round joints to smooth connections
+        # Joints
         for p in landmarks:
             cx, cy = int(p['x'] * w), int(p['y'] * h)
             cv2.circle(img, (cx, cy), 8, color, -1)
@@ -144,17 +180,13 @@ class YedpMocapBase:
         base_name = os.path.splitext(video_filename)[0]
         json_path = os.path.join(OUTPUT_DIR, f"{base_name}.json")
 
-        # 1. Load Media (Video or Image)
+        # 1. Load Media
         frames = []
-        
         if not os.path.exists(video_path):
-            # Return empty structure if file missing
             return (torch.zeros((1, 512, 512, 3)), torch.zeros((1, 512, 512, 3)), torch.zeros((1, 512, 512)), {})
 
-        # Check extension for Image vs Video
         ext = os.path.splitext(video_filename)[1].lower()
         if ext in ['.png', '.jpg', '.jpeg', '.bmp', '.webp']:
-            # Image Mode
             img = cv2.imread(video_path)
             if img is not None:
                 img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
@@ -164,7 +196,6 @@ class YedpMocapBase:
             else:
                 width, height = 512, 512
         else:
-            # Video Mode
             cap = cv2.VideoCapture(video_path)
             width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -184,8 +215,6 @@ class YedpMocapBase:
         if os.path.exists(json_path):
             try:
                 with open(json_path, 'r') as f: raw_data = json.load(f)
-                
-                # If single object (Snapshot), wrap in list
                 if not isinstance(raw_data, list): raw_data = [raw_data]
 
                 oe_filters = {'pose': [], 'face': [], 'hands': []} 
@@ -200,17 +229,25 @@ class YedpMocapBase:
                     # FACE
                     if "face" in frame_data:
                         if smoothing > 0: processed_frame["face"] = self.apply_one_euro(frame_data["face"], oe_filters['face'], timestamp)
+                        
                         for key, idxs in FACE_INDICES.items():
-                            if "iris" in key: self.draw_contour(rig_canvas, processed_frame["face"], idxs, color=(255, 0, 0), thickness=1, fill=True)
-                            else: self.draw_contour(rig_canvas, processed_frame["face"], idxs, color=(255, 255, 255), thickness=1, fill=False)
-                            if key == "oval": self.draw_contour(mask_canvas, processed_frame["face"], idxs, color=255, fill=True)
+                            # MASK Generation: Keep fill/shapes
+                            if key == "oval": 
+                                self.draw_contour(mask_canvas, processed_frame["face"], idxs, color=255, fill=True)
+                            
+                            # RIG Generation: Switch to DOTS (White)
+                            # ControlNet Face expects white dots for landmarks, not lines.
+                            self.draw_subset_points(rig_canvas, processed_frame["face"], idxs, color=(255, 255, 255), radius=2)
 
                     # POSE
                     if "pose" in frame_data:
                         if smoothing > 0: processed_frame["pose"] = self.apply_one_euro(frame_data["pose"], oe_filters['pose'], timestamp)
+                        
+                        # Rig: Use OpenPose Standard Colors
                         self.draw_connections(rig_canvas, processed_frame["pose"], POSE_CONNECTIONS, colors=POSE_COLORS, thickness=3)
                         self.draw_points(rig_canvas, processed_frame["pose"], color=(0, 0, 255), radius=4, skip_indices=pose_face_indices)
-                        # Mask (Volume)
+                        
+                        # Mask: White Fill
                         self.draw_contour(mask_canvas, processed_frame["pose"], TORSO_INDICES, color=255, fill=True)
                         self.draw_connections(mask_canvas, processed_frame["pose"], POSE_CONNECTIONS, default_color=255, thickness=80) 
                         self.draw_points(mask_canvas, processed_frame["pose"], color=255, radius=20, skip_indices=pose_face_indices)
@@ -218,10 +255,13 @@ class YedpMocapBase:
                     # HANDS
                     if "hands" in frame_data:
                         for hand_landmarks in frame_data["hands"]:
-                            self.draw_connections(rig_canvas, hand_landmarks, HAND_CONNECTIONS, default_color=(200, 200, 200), thickness=2)
-                            self.draw_points(rig_canvas, hand_landmarks, color=(0, 255, 0), radius=3)
+                            # Rig: Limbs (Grey/Neutral) + Rainbow Joints
+                            self.draw_connections(rig_canvas, hand_landmarks, HAND_CONNECTIONS, default_color=(50, 50, 50), thickness=2)
                             
-                            # UPDATED: Use the new fill logic instead of convex hull
+                            # Use RAINBOW colors list here
+                            self.draw_points(rig_canvas, hand_landmarks, color=HAND_COLORS, radius=4)
+                            
+                            # Mask: Thick White Fill
                             self.fill_convex_hull(mask_canvas, hand_landmarks, color=255)
 
                     rig_frames.append(rig_canvas.astype(np.float32) / 255.0)
@@ -234,7 +274,6 @@ class YedpMocapBase:
             rig_frames.append(np.zeros((height, width, 3), dtype=np.float32))
             mask_frames.append(np.zeros((height, width), dtype=np.float32))
 
-        # Handle case where no JSON or empty frames
         if not frames: 
             return (torch.zeros((1, 512, 512, 3)), torch.zeros((1, 512, 512, 3)), torch.zeros((1, 512, 512)), {})
 
@@ -255,15 +294,12 @@ class YedpVideoMoCap(YedpMocapBase):
     @classmethod
     def INPUT_TYPES(s):
         types = YedpMocapBase.INPUT_TYPES()
-        # Allows user to pick a video for processing if they want to override the UI drag-drop
-        # But mostly controlled by JS
         return types
 
 class YedpImageMoCap(YedpMocapBase):
     @classmethod
     def INPUT_TYPES(s):
         types = YedpMocapBase.INPUT_TYPES()
-        # For loading existing image files that might have corresponding JSON data
         types["required"]["video_filename"] = ("STRING", {"default": "image.png", "multiline": False})
         return types
 
