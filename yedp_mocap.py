@@ -10,7 +10,7 @@ OUTPUT_DIR = folder_paths.get_input_directory()
 
 # --- 1. COLORS (BGR) ---
 # OpenPose Standard Colors
-COLOR_SPINE = (255, 0, 0)      # Blue (Nose->Neck->Hip)
+COLOR_SPINE = (255, 0, 0)      # Blue (Nose->Neck)
 COLOR_NECK = (255, 0, 0)       # Blue
 
 # Head/Face Structure Colors
@@ -174,29 +174,34 @@ class YedpMocapBase:
                                 if idx < len(processed_frame["face"]):
                                     self.draw_point(rig_canvas, processed_frame["face"][idx], COLOR_FACE_DOT, radius=2, w=width, h=height)
 
-                    # --- BODY (Virtual Skeleton + Head Structure) ---
+                    # --- BODY (Modified as Requested) ---
                     if "pose" in frame_data:
                         if smoothing > 0: processed_frame["pose"] = self.apply_one_euro(frame_data["pose"], oe_filters['pose'], timestamp)
                         pose = processed_frame["pose"]
                         
                         # CALCULATE VIRTUAL POINTS
+                        # Neck = Average of Shoulders
                         neck = {'x': (pose[11]['x'] + pose[12]['x']) / 2, 'y': (pose[11]['y'] + pose[12]['y']) / 2}
+                        # MidHip = Average of Hips (No longer used for drawing, but kept for potential future use)
                         mid_hip = {'x': (pose[23]['x'] + pose[24]['x']) / 2, 'y': (pose[23]['y'] + pose[24]['y']) / 2}
                         nose = pose[0]
                         
-                        # DRAW SPINE CHAIN
+                        # DRAW SPINE (Nose -> Neck ONLY)
                         self.draw_line(rig_canvas, nose, neck, COLOR_SPINE, 3, width, height)
-                        self.draw_line(rig_canvas, neck, mid_hip, COLOR_SPINE, 3, width, height)
+                        
+                        # --- MODIFICATION: V-Torso (Neck to Hips) ---
+                        # Right Side (Neck -> Right Hip 24)
+                        self.draw_line(rig_canvas, neck, pose[24], COLOR_R_SHOULDER, 3, width, height)
+                        # Left Side (Neck -> Left Hip 23)
+                        self.draw_line(rig_canvas, neck, pose[23], COLOR_L_SHOULDER, 3, width, height)
                         
                         # DRAW HEAD STRUCTURE (The V-Shape)
-                        # Nose -> Left Eye -> Left Ear
                         if 7 < len(pose): # Check if indices exist
                             self.draw_line(rig_canvas, nose, pose[2], COLOR_NOSE_EYE, 3, width, height) # Nose -> L_Eye
                             self.draw_line(rig_canvas, pose[2], pose[7], COLOR_EYE_EAR, 3, width, height) # L_Eye -> L_Ear
                             self.draw_point(rig_canvas, pose[2], COLOR_NOSE_EYE, 4, width, height)
                             self.draw_point(rig_canvas, pose[7], COLOR_EYE_EAR, 4, width, height)
                         
-                        # Nose -> Right Eye -> Right Ear
                         if 8 < len(pose):
                             self.draw_line(rig_canvas, nose, pose[5], COLOR_NOSE_EYE, 3, width, height) # Nose -> R_Eye
                             self.draw_line(rig_canvas, pose[5], pose[8], COLOR_EYE_EAR, 3, width, height) # R_Eye -> R_Ear
@@ -207,7 +212,8 @@ class YedpMocapBase:
                         self.draw_line(rig_canvas, neck, pose[12], COLOR_R_SHOULDER, 3, width, height)
                         self.draw_line(rig_canvas, pose[12], pose[14], COLOR_R_SHOULDER, 3, width, height)
                         self.draw_line(rig_canvas, pose[14], pose[16], COLOR_R_ARM, 3, width, height)
-                        self.draw_line(rig_canvas, mid_hip, pose[24], COLOR_R_LEG, 3, width, height)
+                        # --- MODIFICATION: Legs start from Hips, not MidHip ---
+                        # self.draw_line(rig_canvas, mid_hip, pose[24], COLOR_R_LEG, 3, width, height) # REMOVED
                         self.draw_line(rig_canvas, pose[24], pose[26], COLOR_R_LEG, 3, width, height)
                         self.draw_line(rig_canvas, pose[26], pose[28], COLOR_R_LEG, 3, width, height)
                         
@@ -215,7 +221,8 @@ class YedpMocapBase:
                         self.draw_line(rig_canvas, neck, pose[11], COLOR_L_SHOULDER, 3, width, height)
                         self.draw_line(rig_canvas, pose[11], pose[13], COLOR_L_SHOULDER, 3, width, height)
                         self.draw_line(rig_canvas, pose[13], pose[15], COLOR_L_ARM, 3, width, height)
-                        self.draw_line(rig_canvas, mid_hip, pose[23], COLOR_L_LEG, 3, width, height)
+                        # --- MODIFICATION: Legs start from Hips, not MidHip ---
+                        # self.draw_line(rig_canvas, mid_hip, pose[23], COLOR_L_LEG, 3, width, height) # REMOVED
                         self.draw_line(rig_canvas, pose[23], pose[25], COLOR_L_LEG, 3, width, height)
                         self.draw_line(rig_canvas, pose[25], pose[27], COLOR_L_LEG, 3, width, height)
 
