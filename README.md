@@ -31,9 +31,7 @@ Cons: The "Mask" output is rough (volumetric only).
   
 🛠️ **Installation**
 
-Clone this repository into your ComfyUI/custom_nodes/ folder:
-cd ComfyUI/custom_nodes/
-git clone [https://github.com/yourusername/ComfyUI-Yedp-MoCap](https://github.com/yourusername/ComfyUI-Yedp-MoCap)
+Clone this repository into your ComfyUI/custom_nodes/ folder
 
 Restart ComfyUI.
 That's it! The MediaPipe models are included in the web/js folder, so no manual download is required.
