@@ -16,9 +16,11 @@ Cons: The "Mask" output is rough (volumetric only).
 
 🌟 **Key Features**
 
-Record yourself via Webcam directly inside the node. See the skeleton overlay LIVE before you record to ensure your framing is perfect.
-VRAM Saver: Detection runs on your CPU/Browser. This saves your precious VRAM for the actual generation (ControlNet + AnimateDiff).
-JSON Bridge: Exports raw x,y,z coordinate data to .json. Useful for 3D Generalists who want to drive rigs with the captured data.
+- Record yourself via Webcam directly inside the node. See the skeleton overlay LIVE before you record to ensure your framing is perfect.
+
+- VRAM Saver: Detection runs on your CPU/Browser. This saves your precious VRAM for the actual generation (ControlNet + AnimateDiff).
+  
+- JSON Bridge: Exports raw x,y,z coordinate data to .json. Useful for 3D Generalists who want to drive rigs with the captured data.
 
 3 Modes: 
 
