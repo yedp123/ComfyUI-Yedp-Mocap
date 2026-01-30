@@ -6,29 +6,64 @@ import cv2
 import json
 import math
 
-# Define the directory to save captured videos
 OUTPUT_DIR = folder_paths.get_input_directory()
 
-# --- OPENPOSE STANDARDS (BGR COLORS) ---
-# Body Limb Colors (18 standard OpenPose limbs)
+# --- CONNECTIONS & COLORS (CORRECTED OPENPOSE STANDARD) ---
+# OpenCV uses BGR (Blue, Green, Red).
+# We map MediaPipe landmarks to OpenPose colors.
+
+POSE_CONNECTIONS = [
+    (11, 12), # 0: Shoulders
+    (11, 13), # 1: Left Arm Upper (Shoulder->Elbow)
+    (13, 15), # 2: Left Arm Lower (Elbow->Wrist)
+    (12, 14), # 3: Right Arm Upper (Shoulder->Elbow)
+    (14, 16), # 4: Right Arm Lower (Elbow->Wrist)
+    (11, 23), # 5: Left Torso (Shoulder->Hip)
+    (12, 24), # 6: Right Torso (Shoulder->Hip)
+    (23, 24), # 7: Hips
+    (23, 25), # 8: Left Leg Upper (Hip->Knee)
+    (24, 26), # 9: Right Leg Upper (Hip->Knee)
+    (25, 27), # 10: Left Leg Lower (Knee->Ankle)
+    (26, 28), # 11: Right Leg Lower (Knee->Ankle)
+    (27, 29), # 12: Left Foot (Heel->Toe)
+    (28, 30), # 13: Right Foot (Heel->Toe)
+    (29, 31), # 14: Left Toe Tip
+    (30, 32)  # 15: Right Toe Tip
+]
+
+# COLORS (BGR Format)
+# MediaPipe "Left" (Odds) = Viewer's Right. Target: Green Arm, Blue Body.
+# MediaPipe "Right" (Evens) = Viewer's Left. Target: Orange Arm, Green Body.
+
 POSE_COLORS = [
-    (0, 0, 255), (0, 85, 255), (0, 170, 255), (0, 255, 255), (0, 255, 170), (0, 255, 85),
-    (0, 255, 0), (85, 255, 0), (170, 255, 0), (255, 255, 0), (255, 170, 0), (255, 85, 0),
-    (255, 0, 0), (255, 0, 85), (255, 0, 170), (255, 0, 255), (255, 85, 255), (255, 170, 255)
+    (153, 0, 51),    # 0: Shoulders (Dark Purple/Red)
+    (0, 255, 0),     # 1: Left Arm Upper (Green)
+    (0, 255, 0),     # 2: Left Arm Lower (Green)
+    (0, 170, 255),   # 3: Right Arm Upper (Orange)
+    (0, 255, 255),   # 4: Right Arm Lower (Yellow)
+    (255, 0, 0),     # 5: Left Torso (Blue) - CHANGED to match Left Leg
+    (0, 255, 0),     # 6: Right Torso (Green) - CHANGED to match Right Leg
+    (153, 0, 51),    # 7: Hips (Dark Purple/Red)
+    (255, 0, 0),     # 8: Left Leg Upper (Blue)
+    (0, 255, 0),     # 9: Right Leg Upper (Green) - FIXED (Was Cyan)
+    (255, 0, 0),     # 10: Left Leg Lower (Blue)
+    (0, 255, 0),     # 11: Right Leg Lower (Green) - FIXED
+    (255, 0, 0),     # 12: Left Foot (Blue)
+    (0, 255, 0),     # 13: Right Foot (Green)
+    (255, 0, 0),     # 14: Left Toe (Blue)
+    (0, 255, 0)      # 15: Right Toe (Green)
 ]
 
-# Hand Joint Colors (21 specific colors for each joint)
-# This "Rainbow" map is what allows the AI to distinguish the Pinky from the Thumb.
+# Hand Joint Colors (Standard Rainbow)
 HAND_COLORS = [
-    (100, 100, 100), (0, 0, 100), (0, 0, 150), (0, 0, 200), (0, 0, 255), # Wrist + Thumb (Red)
-    (0, 100, 100), (0, 150, 150), (0, 200, 200), (0, 255, 255),          # Index (Yellow/Green)
-    (50, 100, 0), (75, 150, 0), (100, 200, 0), (125, 255, 0),            # Middle (Green)
-    (100, 50, 0), (150, 75, 0), (200, 100, 0), (255, 125, 0),            # Ring (Blueish)
-    (100, 0, 100), (150, 0, 150), (200, 0, 200), (255, 0, 255)           # Pinky (Purple)
+    (0, 0, 255),       # Wrist (Red)
+    (0, 0, 255), (0, 0, 255), (0, 0, 255), (0, 0, 255),       # Thumb (Red)
+    (0, 255, 255), (0, 255, 255), (0, 255, 255), (0, 255, 255), # Index (Yellow)
+    (0, 255, 0), (0, 255, 0), (0, 255, 0), (0, 255, 0),       # Middle (Green)
+    (255, 0, 0), (255, 0, 0), (255, 0, 0), (255, 0, 0),       # Ring (Blue)
+    (255, 0, 255), (255, 0, 255), (255, 0, 255), (255, 0, 255)# Pinky (Purple)
 ]
 
-# Connections
-POSE_CONNECTIONS = [(11, 12), (11, 13), (13, 15), (12, 14), (14, 16), (11, 23), (12, 24), (23, 24), (23, 25), (24, 26), (25, 27), (26, 28), (27, 29), (28, 30), (29, 31), (30, 32)]
 HAND_CONNECTIONS = [(0, 1), (1, 2), (2, 3), (3, 4), (0, 5), (5, 6), (6, 7), (7, 8), (0, 9), (9, 10), (10, 11), (11, 12), (0, 13), (13, 14), (14, 15), (15, 16), (0, 17), (17, 18), (18, 19), (19, 20)]
 
 FACE_INDICES = {
@@ -44,9 +79,7 @@ FACE_INDICES = {
     "nose_bottom": [98, 97, 2, 326, 327],
     "nose_tip": [5, 2] 
 }
-# Mask Volume Indices
 TORSO_INDICES = [11, 12, 24, 23]
-PALM_INDICES = [0, 1, 5, 9, 13, 17]
 
 # --- 1 EURO FILTER ---
 class OneEuroFilter:
@@ -89,7 +122,7 @@ class YedpMocapBase:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "video_filename": ("STRING", {"default": "", "multiline": False}), # Hidden input populated by JS
+                "video_filename": ("STRING", {"default": "", "multiline": False}),
                 "smoothing": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.05}),
             },
         }
@@ -111,21 +144,22 @@ class YedpMocapBase:
             smoothed.append(new_point)
         return smoothed
 
-    def draw_connections(self, img, landmarks, connections, colors=None, default_color=(255, 0, 0), thickness=2):
+    def draw_connections(self, img, landmarks, connections, colors=None, default_color=(0, 0, 255), thickness=2):
         h, w = img.shape[:2]
         for idx, (i, j) in enumerate(connections):
             if i < len(landmarks) and j < len(landmarks):
                 p1 = landmarks[i]; p2 = landmarks[j]
-                color = colors[idx % len(colors)] if colors else default_color
+                if colors and idx < len(colors):
+                    color = colors[idx]
+                else:
+                    color = default_color
+                
                 x1, y1 = int(p1['x'] * w), int(p1['y'] * h)
                 x2, y2 = int(p2['x'] * w), int(p2['y'] * h)
                 cv2.line(img, (x1, y1), (x2, y2), color, thickness)
 
     def draw_points(self, img, landmarks, color=(0, 255, 255), radius=3, skip_indices=None):
         h, w = img.shape[:2]
-        
-        # If we are passed a list of indices to use, we iterate only those.
-        # Otherwise we iterate all landmarks.
         indices_to_draw = range(len(landmarks))
         
         for i in indices_to_draw:
@@ -134,14 +168,15 @@ class YedpMocapBase:
             p = landmarks[i]
             cx, cy = int(p['x'] * w), int(p['y'] * h)
             
-            # Color logic: Support single color OR list of colors (one per point)
             pt_color = color
-            if isinstance(color, list) and len(color) > i:
-                 pt_color = color[i]
+            if isinstance(color, list):
+                if i < len(color):
+                    pt_color = color[i]
+                else:
+                    pt_color = (255, 255, 255)
             
             cv2.circle(img, (cx, cy), radius, pt_color, -1)
 
-    # Helper to draw specific subsets of points (used for face)
     def draw_subset_points(self, img, landmarks, indices, color=(255, 255, 255), radius=2):
         h, w = img.shape[:2]
         for idx in indices:
@@ -162,7 +197,6 @@ class YedpMocapBase:
 
     def fill_convex_hull(self, img, landmarks, color=255):
         h, w = img.shape[:2]
-        # Thick lines for finger segments (Mask volume)
         for i, j in HAND_CONNECTIONS:
             if i < len(landmarks) and j < len(landmarks):
                 p1 = landmarks[i]
@@ -170,7 +204,6 @@ class YedpMocapBase:
                 x1, y1 = int(p1['x'] * w), int(p1['y'] * h)
                 x2, y2 = int(p2['x'] * w), int(p2['y'] * h)
                 cv2.line(img, (x1, y1), (x2, y2), color, 15)
-        # Joints
         for p in landmarks:
             cx, cy = int(p['x'] * w), int(p['y'] * h)
             cv2.circle(img, (cx, cy), 8, color, -1)
@@ -180,7 +213,6 @@ class YedpMocapBase:
         base_name = os.path.splitext(video_filename)[0]
         json_path = os.path.join(OUTPUT_DIR, f"{base_name}.json")
 
-        # 1. Load Media
         frames = []
         if not os.path.exists(video_path):
             return (torch.zeros((1, 512, 512, 3)), torch.zeros((1, 512, 512, 3)), torch.zeros((1, 512, 512)), {})
@@ -207,7 +239,6 @@ class YedpMocapBase:
                 frames.append(frame)
             cap.release()
 
-        # 2. Process JSON
         rig_frames = []
         mask_frames = []
         final_pose_data = []
@@ -226,50 +257,36 @@ class YedpMocapBase:
                     processed_frame = frame_data.copy()
                     timestamp = frame_data.get("time", 0)
 
-                    # FACE
                     if "face" in frame_data:
                         if smoothing > 0: processed_frame["face"] = self.apply_one_euro(frame_data["face"], oe_filters['face'], timestamp)
-                        
                         for key, idxs in FACE_INDICES.items():
-                            # MASK Generation: Keep fill/shapes
                             if key == "oval": 
                                 self.draw_contour(mask_canvas, processed_frame["face"], idxs, color=255, fill=True)
-                            
-                            # RIG Generation: Switch to DOTS (White)
-                            # ControlNet Face expects white dots for landmarks, not lines.
                             self.draw_subset_points(rig_canvas, processed_frame["face"], idxs, color=(255, 255, 255), radius=2)
 
-                    # POSE
                     if "pose" in frame_data:
                         if smoothing > 0: processed_frame["pose"] = self.apply_one_euro(frame_data["pose"], oe_filters['pose'], timestamp)
                         
-                        # Rig: Use OpenPose Standard Colors
                         self.draw_connections(rig_canvas, processed_frame["pose"], POSE_CONNECTIONS, colors=POSE_COLORS, thickness=3)
                         self.draw_points(rig_canvas, processed_frame["pose"], color=(0, 0, 255), radius=4, skip_indices=pose_face_indices)
                         
-                        # Mask: White Fill
                         self.draw_contour(mask_canvas, processed_frame["pose"], TORSO_INDICES, color=255, fill=True)
                         self.draw_connections(mask_canvas, processed_frame["pose"], POSE_CONNECTIONS, default_color=255, thickness=80) 
                         self.draw_points(mask_canvas, processed_frame["pose"], color=255, radius=20, skip_indices=pose_face_indices)
 
-                    # HANDS
                     if "hands" in frame_data:
                         for hand_landmarks in frame_data["hands"]:
-                            # Rig: Limbs (Grey/Neutral) + Rainbow Joints
                             self.draw_connections(rig_canvas, hand_landmarks, HAND_CONNECTIONS, default_color=(50, 50, 50), thickness=2)
-                            
-                            # Use RAINBOW colors list here
                             self.draw_points(rig_canvas, hand_landmarks, color=HAND_COLORS, radius=4)
-                            
-                            # Mask: Thick White Fill
                             self.fill_convex_hull(mask_canvas, hand_landmarks, color=255)
 
+                    rig_canvas = cv2.cvtColor(rig_canvas, cv2.COLOR_BGR2RGB)
+                    
                     rig_frames.append(rig_canvas.astype(np.float32) / 255.0)
                     mask_frames.append(mask_canvas.astype(np.float32) / 255.0)
                     final_pose_data.append(processed_frame)
             except Exception as e: print(f"[Yedp] Error: {e}")
 
-        # Padding / Sync
         while len(rig_frames) < len(frames):
             rig_frames.append(np.zeros((height, width, 3), dtype=np.float32))
             mask_frames.append(np.zeros((height, width), dtype=np.float32))
