@@ -5,6 +5,7 @@ import folder_paths
 import cv2
 import json
 import math
+import torchaudio
 
 # Define the directory to save captured videos
 OUTPUT_DIR = folder_paths.get_input_directory()
@@ -63,8 +64,8 @@ class OneEuroFilter:
 # --- BASE CLASS ---
 class YedpMocapBase:
     CATEGORY = "Yedp/MoCap"
-    RETURN_TYPES = ("IMAGE", "IMAGE", "MASK", "POSE_DATA")
-    RETURN_NAMES = ("image", "rig_image", "mask", "pose_json")
+    RETURN_TYPES = ("IMAGE", "IMAGE", "MASK", "POSE_DATA", "AUDIO")
+    RETURN_NAMES = ("image", "rig_image", "mask", "pose_json", "audio")
     FUNCTION = "load_captured_data"
 
     @classmethod
@@ -139,6 +140,17 @@ class YedpMocapBase:
             cx, cy = int(p['x'] * w), int(p['y'] * h)
             cv2.circle(img, (cx, cy), 8, color, -1)
 
+    def load_audio(self, file_path):
+        # FIX: Robust audio loading. If missing or fails, return 1 sec silence.
+        try:
+            waveform, sample_rate = torchaudio.load(file_path)
+            return {"waveform": waveform.unsqueeze(0), "sample_rate": sample_rate}
+        except Exception as e:
+            # Create a silent dummy audio to prevent nodes from crashing
+            # 1 channel, 44100 Hz, 1 second
+            silent = torch.zeros((1, 44100))
+            return {"waveform": silent.unsqueeze(0), "sample_rate": 44100}
+
     def load_captured_data(self, video_filename, smoothing):
         video_path = os.path.join(OUTPUT_DIR, video_filename)
         base_name = os.path.splitext(video_filename)[0]
@@ -146,10 +158,12 @@ class YedpMocapBase:
 
         # 1. Load Media (Video or Image)
         frames = []
+        audio = None
         
         if not os.path.exists(video_path):
-            # Return empty structure if file missing
-            return (torch.zeros((1, 512, 512, 3)), torch.zeros((1, 512, 512, 3)), torch.zeros((1, 512, 512)), {})
+            # Return empty structure with silent audio
+            silent = self.load_audio("") 
+            return (torch.zeros((1, 512, 512, 3)), torch.zeros((1, 512, 512, 3)), torch.zeros((1, 512, 512)), {}, silent)
 
         # Check extension for Image vs Video
         ext = os.path.splitext(video_filename)[1].lower()
@@ -163,8 +177,12 @@ class YedpMocapBase:
                 width, height = img.shape[1], img.shape[0]
             else:
                 width, height = 512, 512
+            # Audio for image is silence
+            audio = self.load_audio("")
         else:
             # Video Mode
+            audio = self.load_audio(video_path)
+            
             cap = cv2.VideoCapture(video_path)
             width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -175,6 +193,13 @@ class YedpMocapBase:
                 frame = frame.astype(np.float32) / 255.0
                 frames.append(frame)
             cap.release()
+
+        # DYNAMIC THICKNESS CALCULATION (Auto-Scaling)
+        # Scale based on 720p baseline. If video is 4K, lines will be ~3x thicker.
+        scale_factor = min(width, height) / 720.0
+        line_thick = max(2, int(3 * scale_factor))
+        dot_radius = max(3, int(4 * scale_factor))
+        mask_thick = max(15, int(80 * scale_factor)) # For volumetric mask
 
         # 2. Process JSON
         rig_frames = []
@@ -202,26 +227,26 @@ class YedpMocapBase:
                         if smoothing > 0: processed_frame["face"] = self.apply_one_euro(frame_data["face"], oe_filters['face'], timestamp)
                         for key, idxs in FACE_INDICES.items():
                             if "iris" in key: self.draw_contour(rig_canvas, processed_frame["face"], idxs, color=(255, 0, 0), thickness=1, fill=True)
-                            else: self.draw_contour(rig_canvas, processed_frame["face"], idxs, color=(255, 255, 255), thickness=1, fill=False)
+                            else: self.draw_contour(rig_canvas, processed_frame["face"], idxs, color=(255, 255, 255), thickness=max(1, int(1*scale_factor)), fill=False)
                             if key == "oval": self.draw_contour(mask_canvas, processed_frame["face"], idxs, color=255, fill=True)
 
                     # POSE
                     if "pose" in frame_data:
                         if smoothing > 0: processed_frame["pose"] = self.apply_one_euro(frame_data["pose"], oe_filters['pose'], timestamp)
-                        self.draw_connections(rig_canvas, processed_frame["pose"], POSE_CONNECTIONS, colors=POSE_COLORS, thickness=3)
-                        self.draw_points(rig_canvas, processed_frame["pose"], color=(0, 0, 255), radius=4, skip_indices=pose_face_indices)
+                        self.draw_connections(rig_canvas, processed_frame["pose"], POSE_CONNECTIONS, colors=POSE_COLORS, thickness=line_thick)
+                        self.draw_points(rig_canvas, processed_frame["pose"], color=(0, 0, 255), radius=dot_radius, skip_indices=pose_face_indices)
                         # Mask (Volume)
                         self.draw_contour(mask_canvas, processed_frame["pose"], TORSO_INDICES, color=255, fill=True)
-                        self.draw_connections(mask_canvas, processed_frame["pose"], POSE_CONNECTIONS, default_color=255, thickness=80) 
-                        self.draw_points(mask_canvas, processed_frame["pose"], color=255, radius=20, skip_indices=pose_face_indices)
+                        self.draw_connections(mask_canvas, processed_frame["pose"], POSE_CONNECTIONS, default_color=255, thickness=mask_thick) 
+                        self.draw_points(mask_canvas, processed_frame["pose"], color=255, radius=int(mask_thick/2), skip_indices=pose_face_indices)
 
                     # HANDS
                     if "hands" in frame_data:
                         for hand_landmarks in frame_data["hands"]:
-                            self.draw_connections(rig_canvas, hand_landmarks, HAND_CONNECTIONS, default_color=(200, 200, 200), thickness=2)
-                            self.draw_points(rig_canvas, hand_landmarks, color=(0, 255, 0), radius=3)
+                            self.draw_connections(rig_canvas, hand_landmarks, HAND_CONNECTIONS, default_color=(200, 200, 200), thickness=max(1, int(2*scale_factor)))
+                            self.draw_points(rig_canvas, hand_landmarks, color=(0, 255, 0), radius=max(2, int(3*scale_factor)))
                             
-                            # UPDATED: Use the new fill logic instead of convex hull
+                            # Use new fill logic for mask
                             self.fill_convex_hull(mask_canvas, hand_landmarks, color=255)
 
                     rig_frames.append(rig_canvas.astype(np.float32) / 255.0)
@@ -235,10 +260,11 @@ class YedpMocapBase:
             mask_frames.append(np.zeros((height, width), dtype=np.float32))
 
         # Handle case where no JSON or empty frames
-        if not frames: 
-            return (torch.zeros((1, 512, 512, 3)), torch.zeros((1, 512, 512, 3)), torch.zeros((1, 512, 512)), {})
+        if not frames:
+            silent = self.load_audio("") 
+            return (torch.zeros((1, 512, 512, 3)), torch.zeros((1, 512, 512, 3)), torch.zeros((1, 512, 512)), {}, silent)
 
-        return (torch.from_numpy(np.array(frames)), torch.from_numpy(np.array(rig_frames)), torch.from_numpy(np.array(mask_frames)), final_pose_data)
+        return (torch.from_numpy(np.array(frames)), torch.from_numpy(np.array(rig_frames)), torch.from_numpy(np.array(mask_frames)), final_pose_data, audio)
 
 # --- NODE DEFINITIONS ---
 class YedpWebcamRecorder(YedpMocapBase):
