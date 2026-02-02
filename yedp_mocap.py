@@ -5,8 +5,10 @@ import folder_paths
 import cv2
 import json
 import math
+import random
 
 OUTPUT_DIR = folder_paths.get_input_directory()
+TEMP_DIR = folder_paths.get_temp_directory()
 
 # ==============================================================================
 # 1. USER CONFIGURABLE COLORS (RGB Format)
@@ -132,13 +134,11 @@ class YedpMocapBase:
             smoothed.append(new_point)
         return smoothed
 
-    # Added LINE_AA for smooth circles
     def draw_line(self, img, p1, p2, color, thickness=3, w=512, h=512):
         x1, y1 = int(p1['x'] * w), int(p1['y'] * h)
         x2, y2 = int(p2['x'] * w), int(p2['y'] * h)
         cv2.line(img, (x1, y1), (x2, y2), color, thickness, lineType=cv2.LINE_AA)
 
-    # Added LINE_AA for smooth circles
     def draw_point(self, img, p, color, radius=4, w=512, h=512):
         cx, cy = int(p['x'] * w), int(p['y'] * h)
         cv2.circle(img, (cx, cy), radius, color, -1, lineType=cv2.LINE_AA)
@@ -208,24 +208,19 @@ class YedpMocapBase:
                         
                         # 1. RIG DRAWING
                         if include_dense_face:
-                            # DENSE MODE (468 pts)
                             for point in processed_frame["face"]:
                                 self.draw_point(rig_canvas, point, (255,255,255), radius=1, w=width, h=height)
                         else:
-                            # SPARSE MODE (70 pts) - Updated Indices
                             for key, idxs in FACE_INDICES_SPARSE.items():
                                  for idx in idxs:
                                     if idx < len(processed_frame["face"]):
                                         self.draw_point(rig_canvas, processed_frame["face"][idx], (255,255,255), radius=2, w=width, h=height)
 
-                        # 2. IRIS (Standard)
                         if 468 < len(processed_frame["face"]):
                             self.draw_point(rig_canvas, processed_frame["face"][468], (0, 255, 255), radius=2, w=width, h=height)
                         if 473 < len(processed_frame["face"]):
                             self.draw_point(rig_canvas, processed_frame["face"][473], (0, 255, 255), radius=2, w=width, h=height)
 
-                        # 3. MASK (Use Jawline + Eyebrows for proper fill if needed, or fallback to oval)
-                        # We use a broader hull for the mask to ensure coverage
                         hull_indices = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109]
                         pts = []
                         for idx in hull_indices: 
@@ -240,24 +235,19 @@ class YedpMocapBase:
                         neck = {'x': (pose[11]['x'] + pose[12]['x']) / 2, 'y': (pose[11]['y'] + pose[12]['y']) / 2}
                         nose = pose[0]
                         
-                        # Bones
                         self.draw_line(rig_canvas, nose, neck, get_bgr(BONE_COLORS, "Head"), 3, width, height)
                         self.draw_line(rig_canvas, neck, pose[24], get_bgr(BONE_COLORS, "R_Torso"), 3, width, height)
                         self.draw_line(rig_canvas, neck, pose[23], get_bgr(BONE_COLORS, "L_Torso"), 3, width, height)
-                        
                         self.draw_line(rig_canvas, neck, pose[12], get_bgr(BONE_COLORS, "R_Shoulderblade"), 3, width, height)
                         self.draw_line(rig_canvas, pose[12], pose[14], get_bgr(BONE_COLORS, "R_Arm"), 3, width, height)
                         r_wrist_end = r_hand_root if r_hand_root else pose[16]
                         self.draw_line(rig_canvas, pose[14], r_wrist_end, get_bgr(BONE_COLORS, "R_Forearm"), 3, width, height)
-                        
                         self.draw_line(rig_canvas, neck, pose[11], get_bgr(BONE_COLORS, "L_Shoulderblade"), 3, width, height)
                         self.draw_line(rig_canvas, pose[11], pose[13], get_bgr(BONE_COLORS, "L_Arm"), 3, width, height)
                         l_wrist_end = l_hand_root if l_hand_root else pose[15]
                         self.draw_line(rig_canvas, pose[13], l_wrist_end, get_bgr(BONE_COLORS, "L_Forearm"), 3, width, height)
-
                         self.draw_line(rig_canvas, pose[24], pose[26], get_bgr(BONE_COLORS, "R_Thigh"), 3, width, height)
                         self.draw_line(rig_canvas, pose[26], pose[28], get_bgr(BONE_COLORS, "R_Calf"), 3, width, height)
-                        
                         self.draw_line(rig_canvas, pose[23], pose[25], get_bgr(BONE_COLORS, "L_Thigh"), 3, width, height)
                         self.draw_line(rig_canvas, pose[25], pose[27], get_bgr(BONE_COLORS, "L_Calf"), 3, width, height)
 
@@ -267,7 +257,6 @@ class YedpMocapBase:
                             self.draw_line(rig_canvas, nose, pose[2], get_bgr(BONE_COLORS, "L_Eyebrow"), 3, width, height)
                             self.draw_line(rig_canvas, pose[2], pose[7], get_bgr(BONE_COLORS, "L_EarLine"), 3, width, height)
 
-                        # Joints
                         self.draw_point(rig_canvas, neck, get_bgr(JOINT_COLORS, "Neck"), 4, width, height)
                         for idx, name in MP_TO_JOINT.items():
                             if idx < len(pose):
@@ -313,5 +302,85 @@ class YedpImageMoCap(YedpMocapBase):
     @classmethod
     def INPUT_TYPES(s): types = YedpMocapBase.INPUT_TYPES(); types["required"]["video_filename"] = ("STRING", {"default": "image.png", "multiline": False}); return types
 
-NODE_CLASS_MAPPINGS = { "YedpWebcamRecorder": YedpWebcamRecorder, "YedpWebcamSnapshot": YedpWebcamSnapshot, "YedpVideoMoCap": YedpVideoMoCap, "YedpImageMoCap": YedpImageMoCap }
-NODE_DISPLAY_NAME_MAPPINGS = { "YedpWebcamRecorder": "Yedp Webcam Recorder (Video)", "YedpWebcamSnapshot": "Yedp Webcam Snapshot (Image)", "YedpVideoMoCap": "Yedp Video MoCap (File)", "YedpImageMoCap": "Yedp Image MoCap (File)" }
+# ==============================================================================
+# NEW NODE: BATCH IMAGE PREVIEWER (Video Player)
+# ==============================================================================
+class YedpPreviewImages:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": { "images": ("IMAGE",), },
+            "hidden": { "prompt": "PROMPT", "extra_pnginfo": "EXTRA_PNGINFO" },
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("images",)
+    FUNCTION = "preview_images"
+    CATEGORY = "Yedp/MoCap"
+    OUTPUT_NODE = True
+
+    def preview_images(self, images, prompt=None, extra_pnginfo=None):
+        # Save images to temp folder so JS can load them
+        results = []
+        filename_prefix = "yedp_preview_"
+        
+        for i, image in enumerate(images):
+            i_np = 255. * image.cpu().numpy()
+            img = cv2.cvtColor(i_np.clip(0, 255).astype(np.uint8), cv2.COLOR_RGB2BGR)
+            
+            # Using random hash to prevent caching issues in browser
+            rand_id = random.randint(0, 1000000)
+            file_name = f"{filename_prefix}_{i}_{rand_id}.jpg"
+            full_path = os.path.join(TEMP_DIR, file_name)
+            cv2.imwrite(full_path, img)
+            
+            results.append({
+                "filename": file_name,
+                "subfolder": "",
+                "type": "temp"
+            })
+
+        # We return the images (pass-through) AND a UI update
+        return { "ui": { "yedp_images": results }, "result": (images,) }
+
+# ==============================================================================
+# NEW NODE: 3D POSE VIEWER (Three.js)
+# ==============================================================================
+class Yedp3DViewer:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "pose_json": ("POSE_DATA",),
+            },
+        }
+
+    RETURN_TYPES = ("POSE_DATA",)
+    RETURN_NAMES = ("pose_json",)
+    FUNCTION = "view_3d"
+    CATEGORY = "Yedp/MoCap"
+    OUTPUT_NODE = True
+
+    def view_3d(self, pose_json):
+        # We pass the full JSON data to the frontend
+        # ComfyUI allows passing arbitrary data in the "ui" dictionary
+        return { "ui": { "yedp_3d_data": pose_json }, "result": (pose_json,) }
+
+
+NODE_CLASS_MAPPINGS = { 
+    "YedpWebcamRecorder": YedpWebcamRecorder, 
+    "YedpWebcamSnapshot": YedpWebcamSnapshot, 
+    "YedpVideoMoCap": YedpVideoMoCap, 
+    "YedpImageMoCap": YedpImageMoCap,
+    "YedpPreviewImages": YedpPreviewImages,
+    "Yedp3DViewer": Yedp3DViewer
+}
+
+NODE_DISPLAY_NAME_MAPPINGS = { 
+    "YedpWebcamRecorder": "Yedp Webcam Recorder (Video)", 
+    "YedpWebcamSnapshot": "Yedp Webcam Snapshot (Image)", 
+    "YedpVideoMoCap": "Yedp Video MoCap (File)", 
+    "YedpImageMoCap": "Yedp Image MoCap (File)",
+    "YedpPreviewImages": "Yedp Preview Batch (Player)",
+    "Yedp3DViewer": "Yedp 3D Viewer"
+}
