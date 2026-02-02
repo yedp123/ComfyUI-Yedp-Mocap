@@ -59,7 +59,7 @@ const queueNodeAncestors = async (node) => {
     await api.queuePrompt(0, { output: filteredOutput, workflow: workflow });
 };
 
-// --- ROBUST LOCAL LOADER (BLOB PATCHING) ---
+// --- ROBUST LOCAL LOADER ---
 const loadThreeJS = async () => {
     if (window._YEDP_THREE_CACHE) return window._YEDP_THREE_CACHE;
 
@@ -69,23 +69,14 @@ const loadThreeJS = async () => {
             const threeUrl = new URL("three.module.js", baseUrl).href;
             const controlsUrl = new URL("OrbitControls.js", baseUrl).href;
 
-            // 1. Load Main Three.js Module
+            // Load THREE
             const THREE = await import(threeUrl);
-
-            // 2. Fetch OrbitControls as text
-            const response = await fetch(controlsUrl);
-            if (!response.ok) throw new Error(`404: Cannot find OrbitControls.js at ${controlsUrl}`);
             
-            let code = await response.text();
-            
-            // 3. Patch the 'three' import to point to the absolute URL of three.module.js
-            code = code.replace(/from\s+['"]three['"]/g, `from '${threeUrl}'`);
+            // Load OrbitControls (now that it has a valid relative import)
+            const { OrbitControls } = await import(controlsUrl);
 
-            // 4. Create a Blob and import it
-            const blob = new Blob([code], { type: 'application/javascript' });
-            const blobUrl = URL.createObjectURL(blob);
-            const { OrbitControls } = await import(blobUrl);
-            URL.revokeObjectURL(blobUrl);
+            // IMPORTANT: Removed the line causing the "not extensible" error.
+            // We return the objects directly.
 
             resolve({ THREE, OrbitControls });
         } catch (e) {
@@ -98,7 +89,7 @@ const loadThreeJS = async () => {
 // =========================================================
 // NODE 1: PREVIEW BATCH IMAGES (VIDEO PLAYER)
 // =========================================================
-app.registerExtension({
+/*app.registerExtension({
     name: "Yedp.PreviewImages",
     async beforeRegisterNodeDef(nodeType, nodeData, app) {
         if (nodeData.name === "YedpPreviewImages") {
@@ -340,7 +331,7 @@ app.registerExtension({
             };
         }
     }
-});
+});*/
 
 // =========================================================
 // NODE 2: 3D VIEWER (THREE.JS)
