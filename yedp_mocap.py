@@ -303,47 +303,6 @@ class YedpImageMoCap(YedpMocapBase):
     def INPUT_TYPES(s): types = YedpMocapBase.INPUT_TYPES(); types["required"]["video_filename"] = ("STRING", {"default": "image.png", "multiline": False}); return types
 
 # ==============================================================================
-# NEW NODE: BATCH IMAGE PREVIEWER (Video Player)
-# ==============================================================================
-class YedpPreviewImages:
-    @classmethod
-    def INPUT_TYPES(s):
-        return {
-            "required": { "images": ("IMAGE",), },
-            "hidden": { "prompt": "PROMPT", "extra_pnginfo": "EXTRA_PNGINFO" },
-        }
-
-    RETURN_TYPES = ("IMAGE",)
-    RETURN_NAMES = ("images",)
-    FUNCTION = "preview_images"
-    CATEGORY = "Yedp/MoCap"
-    OUTPUT_NODE = True
-
-    def preview_images(self, images, prompt=None, extra_pnginfo=None):
-        # Save images to temp folder so JS can load them
-        results = []
-        filename_prefix = "yedp_preview_"
-        
-        for i, image in enumerate(images):
-            i_np = 255. * image.cpu().numpy()
-            img = cv2.cvtColor(i_np.clip(0, 255).astype(np.uint8), cv2.COLOR_RGB2BGR)
-            
-            # Using random hash to prevent caching issues in browser
-            rand_id = random.randint(0, 1000000)
-            file_name = f"{filename_prefix}_{i}_{rand_id}.jpg"
-            full_path = os.path.join(TEMP_DIR, file_name)
-            cv2.imwrite(full_path, img)
-            
-            results.append({
-                "filename": file_name,
-                "subfolder": "",
-                "type": "temp"
-            })
-
-        # We return the images (pass-through) AND a UI update
-        return { "ui": { "yedp_images": results }, "result": (images,) }
-
-# ==============================================================================
 # NEW NODE: 3D POSE VIEWER (Three.js)
 # ==============================================================================
 class Yedp3DViewer:
@@ -372,7 +331,6 @@ NODE_CLASS_MAPPINGS = {
     "YedpWebcamSnapshot": YedpWebcamSnapshot, 
     "YedpVideoMoCap": YedpVideoMoCap, 
     "YedpImageMoCap": YedpImageMoCap,
-    "YedpPreviewImages": YedpPreviewImages,
     "Yedp3DViewer": Yedp3DViewer
 }
 
@@ -381,6 +339,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "YedpWebcamSnapshot": "Yedp Webcam Snapshot (Image)", 
     "YedpVideoMoCap": "Yedp Video MoCap (File)", 
     "YedpImageMoCap": "Yedp Image MoCap (File)",
-    "YedpPreviewImages": "Yedp Preview Batch (Player)",
     "Yedp3DViewer": "Yedp 3D Viewer"
 }
