@@ -1,76 +1,104 @@
-ComfyUI-Yedp-MoCap (Experimental)
-A client-side MediaPipe implementation for ComfyUI that offers Real-Time Motion Capture feedback.
+**ComfyUI-Yedp-MoCap (Experimental)**
+
+
+A Browser-based Motion Capture Studio for ComfyUI.
+
+ComfyUI-Yedp-MoCap moves the heavy lifting of Pose, Hand, and Face detection from your GPU (Python) to your Browser (JavaScript/MediaPipe). This allows for Real-Time feedback before recording and saves your VRAM for the actual generation.
+
+(Recommended: Add a screenshot of the webcam node with the skeleton overlay visible)
 
 
 
+🌟 **Why use this?**
+
+- See the skeleton overlay LIVE on your webcam feed. Ensure your hands are in frame before you hit record.
+
+- Zero VRAM Cost: Detection runs on your CPU/Integrated Graphics via the browser. This leaves 100% of your Nvidia VRAM free for Stable Diffusion, ControlNet, and AnimateDiff.
+
+- OpenPose Compatible: The node automatically converts MediaPipe data into standard OpenPose Rainbow format (Correct finger colors, minimalist face features) ready for ControlNet.
+
+- 3D Bridge: Exports raw x,y,z coordinate data to .json.
 
 
-⚠️ **Experimental Node**
 
-This is an experimental release. It moves the heavy lifting of Pose/Face detection from your GPU (Python) to your Browser (JavaScript).
-
-Pros: Zero VRAM usage during detection, Real-time feedback, JSON export for 3D apps.
-
-Cons: The "Mask" output is rough (volumetric only).
+📦 **The 5 Nodes**
 
 
-🌟 **Key Features**
+1. Yedp Webcam Recorder (The Main Tool)
+Function: Records video clips from your webcam with a countdown timer.
+Best for: Video-to-Video, AnimateDiff workflows.
+Features: Live preview, 1-Euro smoothing filters, adjustable resolution.
 
-- Record yourself via Webcam directly inside the node. See the skeleton overlay LIVE before you record to ensure your framing is perfect.
+2. Yedp Webcam Snapshot
+Function: Captures a single still image with pose data.
+Best for: Creating reference poses for ControlNet or Image-to-Image.
 
-- VRAM Saver: Detection runs on your CPU/Browser. This saves your precious VRAM for the actual generation (ControlNet + AnimateDiff).
-  
-- JSON Bridge: Exports raw x,y,z coordinate data to .json. Useful for 3D Generalists who want to drive rigs with the captured data.
+4. Yedp Video MoCap
+Function: Loads an existing video file and processes it frame-by-frame.
+Feature: Uses a "Seek-and-Wait" logic to ensure 100% frame accuracy, even on slower computers.
 
-3 Modes: 
+4. Yedp Image MoCap
+Function: Drag and drop any image to extract the pose/rig.
 
-- Webcam Recorder: For video-to-video workflows.
-- Video Loader: Process existing video files with frame-by-frame precision.
-- Snapshot: Capture static poses for image generation.
+5. Yedp 3D Pose Viewer
+Function: Takes the POSE_DATA (JSON) output from any of the nodes above and renders it in a 3D viewport.
+Usage: Verify depth and movement in 3D space before exporting to external software.
 
-  
+
+
 🛠️ **Installation**
 
-Clone this repository into your ComfyUI/custom_nodes/ folder
+1. Navigate to your ComfyUI/custom_nodes/ folder in your terminal/cmd.
 
-Restart ComfyUI.
-That's it! The MediaPipe models are included in the web/js folder, so no manual download is required.
+2. Clone this repository:
 
+git clone [https://github.com/yedp123/ComfyUI-Yedp-MoCap](https://github.com/yedp123/ComfyUI-Yedp-MoCap)
 
-📖 **Usage**
-
-1. Yedp Webcam Recorder
-Best for: Vid2Vid, AnimateDiff workflows.
-How: Click Start, frame yourself using the green/red skeleton overlay. Click Rec. A 3-second timer will start, then recording begins. Click Stop to save.
-Outputs: The video and JSON are saved to your input folder automatically.
-
-2. Yedp Video MoCap
-Best for: Processing stock footage or pre-recorded clips.
-How: Click Load Video. Select a file. Click Process.
-Note: The node uses a "Seek-and-Wait" method to ensure perfect synchronization. It may look slow, but it guarantees no frames are skipped.
-
-3. Settings (The ⚙️ Button)
-Tracking Mode: Switch between "Face Only," "Face + Hands," or "Full Holistic."
-Tip: "Face + Hands" is usually best for desk/webcam setups.
-Jitter Fix: Increases smoothing for shaky hands/bodies.
-Backend: Switch between CPU and GPU (Browser-side). CPU is often more stable for multi-model tracking.
+3. Restart ComfyUI.
 
 
-📦 **Outputs**
-
-- IMAGE: The raw video frames (Webcam feed).
-- RIG_IMAGE: A black background with standard OpenPose colored skeletons. Plug this directly into ControlNet Apply.
-- MASK: A rough, volumetric matte (White silhouette). Useful for basic composition, but use BiRefNet or RemBG if you need high-quality rotoscoping.
-- POSE_DATA: The raw JSON coordinate data.
+Note: All necessary AI models (.task files) are bundled in the web/js folder. No manual downloads required.
 
 
-🐛 **Known Issues / To-Do**
 
-Audio: Audio export is currently disabled to prevent crashes.
-Mask Quality: The mask is generated from bone volume, so it won't capture loose clothing or hair accurately.
-Browser: Tested primarily on Chrome/Edge. Firefox may behave differently with GPU delegates.
+⚙️ **Usage Tips**
+
+The Settings:
+
+
+- Tracking Mode:
+  
+Face + Hands: Best for desk usage (Streaming/Talking).
+Full Holistic: Full body + Face + Hands (Heavy).
+
+
+- Smoothing Sliders:
+
+Jitter: Increases stability for shaky hands.
+Speed/Lag: Controls how fast the skeleton follows you. (Lower = Tighter sync, Higher = Smoother).
+
+
+- The Outputs
+
+IMAGE: The raw video/image.
+RIG_IMAGE: The colored OpenPose map. Plug this directly into ControlNet Apply.
+POSE_DATA: The raw JSON. Save this using a "Save Text" node if you want to import it into Blender.
+MASK: A volumetric white silhouette. (Note: This is experimental/rough. Use BiRefNet or RemBG if you need a perfect composite matte).
+
+
+
+⚠️ **Known Issues / Limitations**
+
+
+Browser Dependency: This node relies on your browser's performance. Chrome/Edge recommended.
+Mask Quality: The mask is generated from bone volume (cylinders), so it won't capture loose clothing or hair accurately.
+Audio: Audio export is currently disabled to ensure stability.
+
+
+
+
 
 
 **Credits**
 
-Original concept by Yedp, built with MediaPipe (Google) and ComfyUI.
+Original Concept by Yedp. Built with MediaPipe (Google) and ComfyUI.
