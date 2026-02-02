@@ -185,12 +185,29 @@ app.registerExtension({
                         const type = img.type || "output";
                         let src = `/view?filename=${img.filename}&type=${type}&subfolder=${sub}`;
                         
-                        // Force refresh if stuck
-                        // src += `&t=${Date.now()}`; 
+                        // NOTE: For sequences, we usually DON'T want cache busting timestamps
+                        // because each file is unique (001.png, 002.png). 
+                        // Adding Date.now() prevents the browser from caching the frames for smooth playback.
                         
                         self.imgDisplay.src = src;
                         self.slider.value = self.idx;
                         self.counter.innerText = `${self.idx + 1}/${self.images.length}`;
+                    }
+                };
+                
+                // --- PRELOADER ---
+                // Silently loads images in the background so they play smoothly
+                this.preload = () => {
+                    if(!self.images || self.images.length === 0) return;
+                    // Cap at 200 to be safe
+                    const limit = Math.min(self.images.length, 200);
+                    for(let i=0; i<limit; i++) {
+                        const img = self.images[i];
+                        const type = img.type || "output";
+                        const sub = img.subfolder || "";
+                        const src = `/view?filename=${img.filename}&type=${type}&subfolder=${sub}`;
+                        // Create a disconnected image object to trigger browser download
+                        new Image().src = src;
                     }
                 };
 
@@ -221,6 +238,7 @@ app.registerExtension({
                         self.slider.max = Math.max(0, self.images.length - 1);
                         self.playBtn.style.opacity = "1.0";
                         updateFrame(0);
+                        self.preload(); // Trigger preload
                         self.loadBtn.innerText = "OK";
                         setTimeout(()=> self.loadBtn.innerText = "LOAD", 1500);
                     } else {
@@ -290,6 +308,7 @@ app.registerExtension({
                         self.slider.max = Math.max(0, self.images.length - 1);
                         self.playBtn.style.opacity = "1.0";
                         updateFrame(0);
+                        self.preload();
                     }
                 }, 1000);
             };
@@ -314,6 +333,9 @@ app.registerExtension({
                     this.playBtn.innerText = "▶";
                     
                     if(this.updateFrameFunc) this.updateFrameFunc(0);
+                    
+                    // Trigger background preload
+                    if(this.preload) this.preload();
                 }
             };
         }
