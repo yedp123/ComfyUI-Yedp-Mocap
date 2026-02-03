@@ -144,7 +144,7 @@ class YedpMocapBase:
 
     def fill_hand_hull(self, img, landmarks, color=255):
         h, w = img.shape[:2]
-        for i, j in HAND_CONNECTIONS: self.draw_line(img, landmarks[i], landmarks[j], color, 15, w, h)
+        for i, j in HAND_CONNECTIONS: self.draw_line(img, landmarks[i], landmarks[j], color, 12, w, h)
         for p in landmarks: self.draw_point(img, p, color, 8, w, h)
 
     def load_captured_data(self, video_filename, smoothing, include_dense_face):
@@ -153,15 +153,27 @@ class YedpMocapBase:
         json_path = os.path.join(OUTPUT_DIR, f"{base_name}.json")
 
         frames = []
-        if not os.path.exists(video_path): return (torch.zeros((1, 512, 512, 3)), torch.zeros((1, 512, 512, 3)), torch.zeros((1, 512, 512)), {})
-             
+        if not os.path.exists(video_path):
+            return (torch.zeros((1, 512, 512, 3)), torch.zeros((1, 512, 512, 3)), torch.zeros((1, 512, 512)), [])
+              
         cap = cv2.VideoCapture(video_path)
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)); height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        while cap.isOpened():
-            ret, frame = cap.read() 
-            if not ret: break
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB); frame = frame.astype(np.float32) / 255.0; frames.append(frame)
-        cap.release()
+        if not cap.isOpened():
+            img = cv2.imread(video_path)
+            if img is not None:
+                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                frames.append(img.astype(np.float32) / 255.0)
+                height, width = img.shape[:2]
+            else:
+                return (torch.zeros((1, 512, 512, 3)), torch.zeros((1, 512, 512, 3)), torch.zeros((1, 512, 512)), [])
+        else:
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            while cap.isOpened():
+                ret, frame = cap.read() 
+                if not ret: break
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                frames.append(frame.astype(np.float32) / 255.0)
+            cap.release()
 
         rig_frames = []; mask_frames = []; final_pose_data = []
         
@@ -169,48 +181,46 @@ class YedpMocapBase:
             try:
                 with open(json_path, 'r') as f: raw_data = json.load(f)
                 if not isinstance(raw_data, list): raw_data = [raw_data]
+                
                 oe_filters = {'pose': [], 'face': [], 'hands': []} 
                 
-                for i, frame_data in enumerate(raw_data):
+                for i in range(len(frames)):
+                    data_idx = i if i < len(raw_data) else len(raw_data) - 1
+                    frame_data = raw_data[data_idx]
+                    
                     rig_canvas = np.zeros((height, width, 3), dtype=np.uint8)
                     mask_canvas = np.zeros((height, width), dtype=np.uint8)
                     
-                    # [FIX]: Use Deep Copy to prevent data corruption across loops/runs
-                    # This ensures the hands are snapped freshly every frame without drift.
-                    processed_frame = copy.deepcopy(frame_data)
-                    
+                    base_frame = copy.deepcopy(frame_data)
                     timestamp = frame_data.get("time", 0)
 
-                    # --- FACE & IRIS ---
-                    if "face" in processed_frame:
-                        if smoothing > 0: processed_frame["face"] = self.apply_one_euro(processed_frame["face"], oe_filters['face'], timestamp)
-                        face = processed_frame["face"]
-                        if include_dense_face:
-                            for pt in face: self.draw_point(rig_canvas, pt, (255,255,255), 1, width, height)
-                        else:
-                            for idxs in FACE_INDICES_SPARSE.values():
-                                for idx in idxs:
-                                    if idx < len(face): self.draw_point(rig_canvas, face[idx], (255,255,255), 2, width, height)
-                        
-                        if len(face) > 473:
-                            self.draw_point(rig_canvas, face[468], (0, 255, 255), 2, width, height)
-                            self.draw_point(rig_canvas, face[473], (0, 255, 255), 2, width, height)
+                    if smoothing > 0:
+                        if "face" in base_frame and base_frame["face"]:
+                            base_frame["face"] = self.apply_one_euro(base_frame["face"], oe_filters['face'], timestamp)
+                        if "pose" in base_frame and base_frame["pose"]:
+                            base_frame["pose"] = self.apply_one_euro(base_frame["pose"], oe_filters['pose'], timestamp)
 
-                    # --- BODY & HEAD ---
-                    if "pose" in processed_frame:
-                        if smoothing > 0: processed_frame["pose"] = self.apply_one_euro(processed_frame["pose"], oe_filters['pose'], timestamp)
-                        pose = processed_frame["pose"]
-                        
+                    frame_2d = copy.deepcopy(base_frame)
+                    
+                    # --- Body & Head Drawing ---
+                    if "pose" in frame_2d and frame_2d["pose"]:
+                        pose = frame_2d["pose"]
                         neck = {'x': (pose[11]['x'] + pose[12]['x']) / 2, 'y': (pose[11]['y'] + pose[12]['y']) / 2}
                         
-                        # Head Lines
+                        # Head Bone Rig
                         self.draw_line(rig_canvas, pose[0], neck, get_bgr(BONE_COLORS, "Head"), 3, width, height)
                         self.draw_line(rig_canvas, pose[0], pose[5], get_bgr(BONE_COLORS, "R_Eyebrow"), 3, width, height)
                         self.draw_line(rig_canvas, pose[5], pose[8], get_bgr(BONE_COLORS, "R_EarLine"), 3, width, height)
                         self.draw_line(rig_canvas, pose[0], pose[2], get_bgr(BONE_COLORS, "L_Eyebrow"), 3, width, height)
                         self.draw_line(rig_canvas, pose[2], pose[7], get_bgr(BONE_COLORS, "L_EarLine"), 3, width, height)
+                        
+                        # Head Mask (Ellipse / Oval)
+                        ear_dist = math.hypot(pose[8]['x'] - pose[7]['x'], pose[8]['y'] - pose[7]['y'])
+                        hr = int((ear_dist * width) * 0.8) if ear_dist > 0 else 40
+                        cv2.ellipse(mask_canvas, (int(pose[0]['x']*width), int(pose[0]['y']*height)), (hr, int(hr*1.2)), 0, 0, 360, 255, -1, lineType=cv2.LINE_AA)
+                        self.draw_line(mask_canvas, pose[0], neck, 255, 20, width, height)
 
-                        # Torso & Arms
+                        # Torso Rig & Mask
                         self.draw_line(rig_canvas, neck, pose[24], get_bgr(BONE_COLORS, "R_Torso"), 3, width, height)
                         self.draw_line(rig_canvas, neck, pose[23], get_bgr(BONE_COLORS, "L_Torso"), 3, width, height)
                         self.draw_line(rig_canvas, neck, pose[12], get_bgr(BONE_COLORS, "R_Shoulderblade"), 3, width, height)
@@ -220,68 +230,97 @@ class YedpMocapBase:
                         self.draw_line(rig_canvas, pose[11], pose[13], get_bgr(BONE_COLORS, "L_Arm"), 3, width, height)
                         self.draw_line(rig_canvas, pose[13], pose[15], get_bgr(BONE_COLORS, "L_Forearm"), 3, width, height)
                         
+                        torso_poly = np.array([
+                            [int(pose[12]['x'] * width), int(pose[12]['y'] * height)],
+                            [int(pose[11]['x'] * width), int(pose[11]['y'] * height)],
+                            [int(pose[23]['x'] * width), int(pose[23]['y'] * height)],
+                            [int(pose[24]['x'] * width), int(pose[24]['y'] * height)]
+                        ], dtype=np.int32)
+                        cv2.fillPoly(mask_canvas, [torso_poly], 255, lineType=cv2.LINE_AA)
+                        
+                        for p1, p2 in [(pose[12], pose[14]), (pose[14], pose[16]), (pose[11], pose[13]), (pose[13], pose[15])]:
+                            self.draw_line(mask_canvas, p1, p2, 255, 20, width, height)
+
                         # Legs
-                        self.draw_line(rig_canvas, pose[24], pose[26], get_bgr(BONE_COLORS, "R_Thigh"), 3, width, height)
-                        self.draw_line(rig_canvas, pose[26], pose[28], get_bgr(BONE_COLORS, "R_Calf"), 3, width, height)
-                        self.draw_line(rig_canvas, pose[23], pose[25], get_bgr(BONE_COLORS, "L_Thigh"), 3, width, height)
-                        self.draw_line(rig_canvas, pose[25], pose[27], get_bgr(BONE_COLORS, "L_Calf"), 3, width, height)
+                        for p1, p2, color_key in [(pose[24], pose[26], "R_Thigh"), (pose[26], pose[28], "R_Calf"), (pose[23], pose[25], "L_Thigh"), (pose[25], pose[27], "L_Calf")]:
+                            self.draw_line(rig_canvas, p1, p2, get_bgr(BONE_COLORS, color_key), 3, width, height)
+                            self.draw_line(mask_canvas, p1, p2, 255, 25, width, height)
 
                         self.draw_point(rig_canvas, neck, get_bgr(JOINT_COLORS, "Neck"), 4, width, height)
                         for idx, name in MP_TO_JOINT.items():
                             if idx < len(pose): self.draw_point(rig_canvas, pose[idx], get_bgr(JOINT_COLORS, name), 4, width, height)
+                    
+                    # --- Face Mask/Rig (Independent of Torso) ---
+                    if "face" in frame_2d and frame_2d["face"]:
+                        face = frame_2d["face"]
+                        
+                        # Head Oval Mask fallback if no pose data
+                        if not ("pose" in frame_2d and frame_2d["pose"]):
+                            nose = face[1] # Approximate nose center
+                            ear_l, ear_r = face[234], face[454]
+                            ear_dist = math.hypot(ear_l['x']-ear_r['x'], ear_l['y']-ear_r['y'])
+                            hr = int((ear_dist * width) * 0.6) if ear_dist > 0 else 40
+                            cv2.ellipse(mask_canvas, (int(nose['x']*width), int(nose['y']*height)), (hr, int(hr*1.2)), 0, 0, 360, 255, -1, lineType=cv2.LINE_AA)
+                        
+                        # Face Landmark Rig
+                        if include_dense_face:
+                            for pt in face: self.draw_point(rig_canvas, pt, (255,255,255), 1, width, height)
+                        else:
+                            for idxs in FACE_INDICES_SPARSE.values():
+                                for idx in idxs:
+                                    if idx < len(face): self.draw_point(rig_canvas, face[idx], (255,255,255), 2, width, height)
+                        if len(face) > 473:
+                            self.draw_point(rig_canvas, face[468], (0, 255, 255), 2, width, height)
+                            self.draw_point(rig_canvas, face[473], (0, 255, 255), 2, width, height)
 
-                    # --- HANDS DETECTION, ALIGNMENT & GRADIENTS ---
-                    if "hands" in processed_frame and "pose" in processed_frame:
-                        r_wrist = pose[16]
-                        l_wrist = pose[15]
+                    # --- Hands Drawing ---
+                    if "hands" in frame_2d and frame_2d["hands"]:
+                        pose_ref = frame_2d.get("pose", [])
+                        r_wrist = pose_ref[16] if len(pose_ref) > 16 else None
+                        l_wrist = pose_ref[15] if len(pose_ref) > 15 else None
 
-                        for hand in processed_frame["hands"]:
+                        for hand in frame_2d["hands"]:
                             if not hand: continue
                             root = hand[0]
-
-                            # 1. Determine Hand Side
-                            dist_r = math.hypot(root['x'] - r_wrist['x'], root['y'] - r_wrist['y'])
-                            dist_l = math.hypot(root['x'] - l_wrist['x'], root['y'] - l_wrist['y'])
+                            wrist_rgb = WRIST_ROOT_COLOR
                             
-                            if dist_r < dist_l:
-                                wrist_rgb = JOINT_COLORS["R_Wrist"]
-                                target_wrist = r_wrist
-                            else:
-                                wrist_rgb = JOINT_COLORS["L_Wrist"]
-                                target_wrist = l_wrist
-
-                            # 2. Snap Hand to Body (Affects both 2D Image and 3D JSON Output)
-                            offset_x = target_wrist['x'] - root['x']
-                            offset_y = target_wrist['y'] - root['y']
-                            offset_z = target_wrist.get('z', 0) - root.get('z', 0)
-
-                            for pt in hand:
-                                pt['x'] += offset_x
-                                pt['y'] += offset_y
-                                if 'z' in pt: pt['z'] += offset_z
-
-                            # 3. Draw Bones
-                            for i, (s_idx, e_idx) in enumerate(HAND_CONNECTIONS):
-                                f_idx = i // 4; j_idx = (i % 4) + 1 
-                                self.draw_line(rig_canvas, hand[s_idx], hand[e_idx], get_hand_bgr(f_idx, j_idx), 2, width, height)
-                            
-                            # 4. Draw Joints
-                            for i, p in enumerate(hand):
-                                if i == 0:
-                                    color = (wrist_rgb[2], wrist_rgb[1], wrist_rgb[0])
+                            # Attempt Snap only if body wrists exist
+                            if r_wrist and l_wrist:
+                                dist_r = math.hypot(root['x'] - r_wrist['x'], root['y'] - r_wrist['y'])
+                                dist_l = math.hypot(root['x'] - l_wrist['x'], root['y'] - l_wrist['y'])
+                                if dist_r < dist_l:
+                                    wrist_rgb, target_wrist = JOINT_COLORS["R_Wrist"], r_wrist
                                 else:
-                                    color = get_hand_bgr((i-1)//4, (i-1)%4 + 1)
+                                    wrist_rgb, target_wrist = JOINT_COLORS["L_Wrist"], l_wrist
+                                
+                                ox, oy = target_wrist['x'] - root['x'], target_wrist['y'] - root['y']
+                                for pt in hand:
+                                    pt['x'] += ox; pt['y'] += oy
+
+                            # Draw Rig
+                            for j, (s_idx, e_idx) in enumerate(HAND_CONNECTIONS):
+                                f_idx, j_idx = j // 4, (j % 4) + 1 
+                                self.draw_line(rig_canvas, hand[s_idx], hand[e_idx], get_hand_bgr(f_idx, j_idx), 2, width, height)
+                            for j, p in enumerate(hand):
+                                color = (wrist_rgb[2], wrist_rgb[1], wrist_rgb[0]) if j == 0 else get_hand_bgr((j-1)//4, (j-1)%4 + 1)
                                 self.draw_point(rig_canvas, p, color, 4, width, height)
                             
+                            # Draw Mask
                             self.fill_hand_hull(mask_canvas, hand, color=255)
 
                     rig_canvas = cv2.cvtColor(rig_canvas, cv2.COLOR_BGR2RGB)
                     rig_frames.append(rig_canvas.astype(np.float32) / 255.0)
                     mask_frames.append(mask_canvas.astype(np.float32) / 255.0)
-                    final_pose_data.append(processed_frame)
-            except Exception as e: print(f"[Yedp] Error: {e}")
+                    final_pose_data.append(copy.deepcopy(base_frame))
 
-        if not frames: return (torch.zeros((1, 512, 512, 3)), torch.zeros((1, 512, 512, 3)), torch.zeros((1, 512, 512)), {})
+            except Exception as e: 
+                print(f"[Yedp] Error processing frame data: {e}")
+
+        if not rig_frames and frames:
+            for f in frames:
+                rig_frames.append(np.zeros_like(f))
+                mask_frames.append(np.zeros(f.shape[:2], dtype=np.float32))
+
         return (torch.from_numpy(np.array(frames)), torch.from_numpy(np.array(rig_frames)), torch.from_numpy(np.array(mask_frames)), final_pose_data)
 
 # --- CLASS MAPPINGS ---
