@@ -40,7 +40,7 @@ Function: Loads an existing video file and processes it frame-by-frame.
 Feature: Uses a "Seek-and-Wait" logic to ensure 100% frame accuracy, even on slower computers.
 
 4. Yedp Image MoCap
-Function: Drag and drop any image to extract the pose/rig.
+Function: Load any image to extract the pose/rig.
 
 5. Yedp 3D Pose Viewer
 Function: Takes the POSE_DATA (JSON) output from any of the nodes above and renders it in a 3D viewport.
