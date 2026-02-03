@@ -1,5 +1,7 @@
 **ComfyUI-Yedp-MoCap (Experimental)**
 
+<img width="1077" height="822" alt="Preview" src="https://github.com/user-attachments/assets/fde25ee0-d44b-40c7-8cb8-a0e787dcb58a" />
+
 
 A Browser-based Motion Capture Studio for ComfyUI.
 
@@ -9,7 +11,7 @@ ComfyUI-Yedp-MoCap moves the heavy lifting of Pose, Hand, and Face detection fro
 
 
 
-🌟 **Why use this?**
+🌟 <ins>**Why use this?**</ins>
 
 - See the skeleton overlay LIVE on your webcam feed. Ensure your hands are in frame before you hit record.
 
@@ -21,7 +23,7 @@ ComfyUI-Yedp-MoCap moves the heavy lifting of Pose, Hand, and Face detection fro
 
 
 
-📦 **The 5 Nodes**
+📦 <ins>**The 5 Nodes**</ins>
 
 
 1. Yedp Webcam Recorder (The Main Tool)
@@ -46,7 +48,7 @@ Usage: Verify depth and movement in 3D space before exporting to external softwa
 
 
 
-🛠️ **Installation**
+🛠️ <ins>**Installation**</ins>
 
 1. Navigate to your ComfyUI/custom_nodes/ folder in your terminal/cmd.
 
@@ -61,7 +63,7 @@ Note: All necessary AI models (.task files) are bundled in the web/js folder. No
 
 
 
-⚙️ **Usage Tips**
+⚙️ <ins>**Usage Tips**</ins>
 
 The Settings:
 
@@ -87,7 +89,7 @@ MASK: A volumetric white silhouette. (Note: This is experimental/rough. Use BiRe
 
 
 
-⚠️ **Known Issues / Limitations**
+⚠️ <ins>**Known Issues / Limitations**</ins>
 
 
 Browser Dependency: This node relies on your browser's performance. Chrome/Edge recommended.
@@ -99,6 +101,6 @@ Audio: Audio export is currently disabled to ensure stability.
 
 
 
-**Credits**
+**CREDITS**
 
 Original Concept by Yedp. Built with MediaPipe (Google) and ComfyUI.
