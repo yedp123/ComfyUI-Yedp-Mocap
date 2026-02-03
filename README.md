@@ -7,8 +7,6 @@ A Browser-based Motion Capture Studio for ComfyUI.
 
 ComfyUI-Yedp-MoCap moves the heavy lifting of Pose, Hand, and Face detection from your GPU (Python) to your Browser (JavaScript/MediaPipe). This allows for Real-Time feedback before recording and saves your VRAM for the actual generation.
 
-(Recommended: Add a screenshot of the webcam node with the skeleton overlay visible)
-
 
 
 🌟 <ins>**Why use this?**</ins>
