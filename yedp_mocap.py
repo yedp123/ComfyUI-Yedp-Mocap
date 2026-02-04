@@ -48,7 +48,7 @@ BONE_COLORS = {
 # Default neutral color (fallback)
 WRIST_ROOT_COLOR = (168, 168, 168) 
 
-# Gradient colors for hands: [Wrist/Root, Joint1, Joint2, Joint3, Tip]
+# Gradient colors for hands (used for LINES/BONES only): [Wrist/Root, Joint1, Joint2, Joint3, Tip]
 HAND_GRADIENT_COLORS = [
     [WRIST_ROOT_COLOR, (100, 0, 0),   (150, 0, 0),   (200, 0, 0),   (255, 0, 0)],   # Thumb
     [WRIST_ROOT_COLOR, (100, 100, 0), (150, 150, 0), (200, 200, 0), (255, 255, 0)], # Index
@@ -282,28 +282,30 @@ class YedpMocapBase:
                         for hand in frame_2d["hands"]:
                             if not hand: continue
                             root = hand[0]
-                            wrist_rgb = WRIST_ROOT_COLOR
                             
                             # Attempt Snap only if body wrists exist
                             if r_wrist and l_wrist:
                                 dist_r = math.hypot(root['x'] - r_wrist['x'], root['y'] - r_wrist['y'])
                                 dist_l = math.hypot(root['x'] - l_wrist['x'], root['y'] - l_wrist['y'])
                                 if dist_r < dist_l:
-                                    wrist_rgb, target_wrist = JOINT_COLORS["R_Wrist"], r_wrist
+                                    target_wrist = r_wrist
                                 else:
-                                    wrist_rgb, target_wrist = JOINT_COLORS["L_Wrist"], l_wrist
+                                    target_wrist = l_wrist
                                 
                                 ox, oy = target_wrist['x'] - root['x'], target_wrist['y'] - root['y']
                                 for pt in hand:
                                     pt['x'] += ox; pt['y'] += oy
 
-                            # Draw Rig
+                            # Draw Rig Lines (Keep Gradient for bones)
                             for j, (s_idx, e_idx) in enumerate(HAND_CONNECTIONS):
                                 f_idx, j_idx = j // 4, (j % 4) + 1 
                                 self.draw_line(rig_canvas, hand[s_idx], hand[e_idx], get_hand_bgr(f_idx, j_idx), 2, width, height)
+                            
+                            # Draw Rig Points (Force to OpenPose Blue for joints)
+                            # BGR for (0, 0, 255) is (255, 0, 0)
+                            hand_joint_color_bgr = (255, 0, 0)
                             for j, p in enumerate(hand):
-                                color = (wrist_rgb[2], wrist_rgb[1], wrist_rgb[0]) if j == 0 else get_hand_bgr((j-1)//4, (j-1)%4 + 1)
-                                self.draw_point(rig_canvas, p, color, 4, width, height)
+                                self.draw_point(rig_canvas, p, hand_joint_color_bgr, 4, width, height)
                             
                             # Draw Mask
                             self.fill_hand_hull(mask_canvas, hand, color=255)
